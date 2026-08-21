@@ -61,12 +61,32 @@ th{color:#aeb6bf;font-size:13px}
 @media(max-width:900px){
   .team-grid,.team-grid.two{grid-template-columns:1fr}
 }
+
+.reward-section{background:#0f0f0f;border:1px solid #7d6128;border-radius:22px;padding:20px;margin-top:22px}
+.reward-head{margin-bottom:16px}.reward-head h2{margin:0;color:#e6b64a}
+.current-team{background:#171717;border-radius:16px;padding:16px;margin:16px 0}
+.current-team .big{font-size:28px;font-weight:900}
+.slots{display:grid;grid-template-columns:repeat(7,1fr);gap:10px;margin:12px 0 24px}
+.slot{padding:18px 8px;background:#202020;color:white;border:1px solid #555;border-radius:14px}
+.slot.used{background:#333;color:#777}.slot.chosen{background:#18b76a;color:#fff}
+.snacks{display:grid;grid-template-columns:repeat(4,1fr);gap:12px}
+.flip{height:170px;perspective:1000px}
+.flip-inner{position:relative;width:100%;height:100%;transition:transform .55s;transform-style:preserve-3d;cursor:pointer}
+.flip.flipped .flip-inner{transform:rotateY(180deg)}
+.face{position:absolute;inset:0;backface-visibility:hidden;border-radius:16px;display:flex;align-items:center;justify-content:center;text-align:center;padding:12px;border:1px solid #8a6a27}
+.front{background:#000;overflow:hidden}.front img{width:100%;height:100%;object-fit:contain}
+.back{background:#171717;color:#fff;transform:rotateY(180deg);font-size:20px;font-weight:900}
+.flip.used{opacity:.28;pointer-events:none}
+.reward-actions{display:flex;gap:10px;margin-top:18px}
+.final-result{margin-top:22px}
+@media(max-width:900px){.slots{grid-template-columns:repeat(4,1fr)}.snacks{grid-template-columns:repeat(2,1fr)}}
+
 </style>
 </head>
 <body>
 <header>
   <h1>PM보호국 · 프로젝트 빌런 소탕 작전</h1>
-  <p>고정 라운드 대진 3-2-2 · 각 팀 점수를 입력하고 최종 순위를 확정합니다.</p>
+  <p>긴급 보급품을 얻기 위해, 프로젝트 빌런을 소탕하라!</p>
 </header>
 <main>
 
@@ -198,6 +218,34 @@ th{color:#aeb6bf;font-size:13px}
   </table>
   <div id="tieArea"></div>
 </section>
+
+<section id="rewardSection" class="reward-section hidden">
+  <div class="reward-head">
+    <h2>보상 선택 · Day 2 작전 배치</h2>
+    <p>프로젝트 빌런 소탕 최종 순위 1위부터 발표 순서와 긴급 보급품을 선택합니다.</p>
+  </div>
+  <div class="current-team">
+    <div id="rewardRank" style="color:#e6b64a;font-weight:800">1위</div>
+    <div id="rewardTeam" class="big">-</div>
+  </div>
+  <h3>① Day 2 발표 순서 선택</h3>
+  <div id="slots" class="slots"></div>
+  <h3>② 긴급 보급품 카드 선택</h3>
+  <div id="snacks" class="snacks"></div>
+  <div class="reward-actions">
+    <button id="nextReward" class="primary" onclick="nextReward()" disabled>다음 팀</button>
+  </div>
+  <div id="rewardStatus"></div>
+</section>
+
+<section id="finalReward" class="summary final-result hidden">
+  <h3>Day 2 최종 작전 배치</h3>
+  <table>
+    <thead><tr><th>소탕 순위</th><th>팀</th><th>Day 2 발표</th><th>긴급 보급품</th></tr></thead>
+    <tbody id="finalRewardBody"></tbody>
+  </table>
+</section>
+
 </main>
 
 <script>
@@ -331,6 +379,71 @@ function resetScores(){
 }
 loadLocal();
 renderResults();
+
+const CARD_BACK = "https://quizn.show/app/file/thumb/4B52E6CE2BA6C2018570095D3392459A";
+const snackLabels=["☕ 커피 쿠폰","🍫 초콜릿","⚡ 에너지음료","🦑 오징어/육포","🌭 소시지","🍪 쿠키/과자","🥜 견과류"];
+let rewardState=JSON.parse(localStorage.getItem("pmc-villain-rewards")||"null") || {
+  index:0, slots:{}, snacks:{}, usedSlots:[], usedSnacks:[],
+  snackOrder:[...snackLabels].sort(()=>Math.random()-.5)
+};
+function saveRewards(){localStorage.setItem("pmc-villain-rewards",JSON.stringify(rewardState))}
+function finalOrderReady(){
+  if(!teams.every(t=>getScore(t)!==null)) return false;
+  const groups=tieGroups();
+  return groups.every(g=>{
+    const vals=g.map(t=>t.sudden);
+    return vals.every(v=>v!==null) && new Set(vals).size===vals.length;
+  }) || groups.length===0;
+}
+function maybeShowRewards(){
+  if(finalOrderReady()){
+    document.getElementById("rewardSection").classList.remove("hidden");
+    renderReward();
+  } else {
+    document.getElementById("rewardSection").classList.add("hidden");
+  }
+}
+const originalRenderResults=renderResults;
+renderResults=function(){originalRenderResults();maybeShowRewards();}
+function renderReward(){
+  const ordered=sortedTeams();
+  if(rewardState.index>=ordered.length){showFinalReward();return}
+  const t=ordered[rewardState.index];
+  document.getElementById("rewardRank").textContent=(rewardState.index+1)+"위";
+  document.getElementById("rewardTeam").textContent=t.name;
+  const slots=document.getElementById("slots");slots.innerHTML="";
+  for(let i=1;i<=7;i++){
+    const b=document.createElement("button");b.className="slot";b.textContent=i+"번째";
+    if(rewardState.usedSlots.includes(i)) b.classList.add("used");
+    if(rewardState.slots[t.id]===i){b.classList.remove("used");b.classList.add("chosen")}
+    b.disabled=rewardState.usedSlots.includes(i) || !!rewardState.slots[t.id];
+    b.onclick=()=>{rewardState.slots[t.id]=i;rewardState.usedSlots.push(i);saveRewards();renderReward();};
+    slots.appendChild(b);
+  }
+  const snack=document.getElementById("snacks");snack.innerHTML="";
+  rewardState.snackOrder.forEach((label,i)=>{
+    const f=document.createElement("div");f.className="flip";
+    if(rewardState.usedSnacks.includes(i)&&rewardState.snacks[t.id]!==i) f.classList.add("used");
+    if(rewardState.snacks[t.id]===i) f.classList.add("flipped");
+    f.innerHTML=`<div class="flip-inner"><div class="face front"><img src="badge-black.webp" alt="PM보호국 긴급 보급품 카드"></div><div class="face back">${label}</div></div>`;
+    f.onclick=()=>{if(rewardState.snacks[t.id]!=null||rewardState.usedSnacks.includes(i))return;rewardState.snacks[t.id]=i;rewardState.usedSnacks.push(i);saveRewards();renderReward();}
+    snack.appendChild(f);
+  });
+  const ready=rewardState.slots[t.id] && rewardState.snacks[t.id]!=null;
+  document.getElementById("nextReward").disabled=!ready;
+  document.getElementById("rewardStatus").innerHTML=ready?`<div class="notice">발표 ${rewardState.slots[t.id]}번째 · ${rewardState.snackOrder[rewardState.snacks[t.id]]} 확정</div>`:"";
+}
+function nextReward(){rewardState.index++;saveRewards();renderReward()}
+function showFinalReward(){
+  document.getElementById("rewardSection").classList.add("hidden");
+  document.getElementById("finalReward").classList.remove("hidden");
+  const body=document.getElementById("finalRewardBody");body.innerHTML="";
+  sortedTeams().forEach((t,i)=>{
+    body.innerHTML+=`<tr><td class="rank">${i+1}위</td><td>${t.name}</td><td>${rewardState.slots[t.id]||"-"}번째</td><td>${rewardState.snacks[t.id]!=null?rewardState.snackOrder[rewardState.snacks[t.id]]:"-"}</td></tr>`;
+  });
+}
+maybeShowRewards();
+
 </script>
 </body>
 </html>
