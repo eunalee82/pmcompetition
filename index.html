@@ -372,10 +372,17 @@ function saveSudden(){
 }
 function resetScores(){
   if(!confirm("모든 점수와 서든데스 기록을 초기화할까요?")) return;
+
   localStorage.removeItem("pmc-villain-game");
+
+  // Day 2 최종 작전 배치 데이터도 함께 초기화
+  localStorage.removeItem("pmc-villain-rewards");
+
   teams.forEach(t=>t.sudden=null);
   teams.forEach(t=>document.getElementById(t.id).value="");
-  renderResults();
+
+  // 저장된 rewardState까지 확실히 초기화하기 위해 새로고침
+  location.reload();
 }
 loadLocal();
 renderResults();
